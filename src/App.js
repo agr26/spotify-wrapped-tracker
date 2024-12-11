@@ -1,11 +1,36 @@
 import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import SpotifyStatsDashboard from './components/SpotifyStatsDashboard';
+import SpotifyCallback from './pages/SpotifyCallback';
+import LoginPage from './pages/LoginPage';
+import { isUserLoggedIn } from './services/spotifyAuth';
+
+function PrivateRoute({ children }) {
+  return isUserLoggedIn() ? children : <Navigate to="/login" />;
+}
 
 function App() {
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <SpotifyStatsDashboard />
-    </div>
+    <Router>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route 
+          path="/dashboard" 
+          element={
+            <PrivateRoute>
+              <SpotifyStatsDashboard />
+            </PrivateRoute>
+          } 
+        />
+        <Route path="/callback" element={<SpotifyCallback />} />
+        <Route 
+          path="/" 
+          element={
+            isUserLoggedIn() ? <Navigate to="/dashboard" /> : <Navigate to="/login" />
+          } 
+        />
+      </Routes>
+    </Router>
   );
 }
 

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Clock, Music, BarChart2, Disc, Calendar, 
          TrendingUp, History, Award, Sun, Moon } from 'lucide-react';
 import { dummyListeningStats, dummyProjection, historicalData } from '../data/dummyData';
+import { useNavigate } from 'react-router-dom';
+import { spotifyLogout } from '../services/spotifyAuth';
 
 // Reusable components
 const ProgressBar = ({ current, max, color = "#1DB954", showPercentage = false }) => (
