@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Music, BarChart2, Disc, Calendar, 
-         TrendingUp, History, Award, Sun, Moon } from 'lucide-react';
-import { dummyListeningStats, dummyProjection, historicalData } from './dummyData';
+import { Clock, Music, BarChart2, Disc, Calendar, TrendingUp, History } from 'lucide-react';
 
 // Reusable components
 const ProgressBar = ({ current, max, color = "#1DB954", showPercentage = false }) => (
@@ -40,215 +38,171 @@ const StatCard = ({ icon: Icon, value, label, subValue, trend }) => (
 );
 
 function MainPage({ token }) {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [showFullList, setShowFullList] = useState(false);
-  const [timeRange, setTimeRange] = useState('all');
+  const [userData, setUserData] = useState(null);
   const [topTracks, setTopTracks] = useState([]);
   const [topArtists, setTopArtists] = useState([]);
+  const [recentlyPlayed, setRecentlyPlayed] = useState([]);
+  const [audioFeatures, setAudioFeatures] = useState([]);
+  const [playlists, setPlaylists] = useState([]);
+  const [predictions, setPredictions] = useState({});
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [timeRange, setTimeRange] = useState('medium_term');
+  const [showFullList, setShowFullList] = useState(false);
 
   useEffect(() => {
     if (token) {
-      fetchUserData();
+      fetchAllData();
     }
-  }, [token]);
+  }, [token, timeRange]);
 
-  const fetchUserData = async () => {
+  const fetchAllData = async () => {
     setLoading(true);
     try {
-      const [tracksResponse, artistsResponse] = await Promise.all([
-        fetch('https://api.spotify.com/v1/me/top/tracks?limit=50', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }),
-        fetch('https://api.spotify.com/v1/me/top/artists?limit=50', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
+      const [userDataResponse, topTracksResponse, topArtistsResponse, recentlyPlayedResponse, playlistsResponse] = await Promise.all([
+        fetch('https://api.spotify.com/v1/me', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`https://api.spotify.com/v1/me/top/tracks?time_range=${timeRange}&limit=50`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`https://api.spotify.com/v1/me/top/artists?time_range=${timeRange}&limit=50`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('https://api.spotify.com/v1/me/player/recently-played?limit=50', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('https://api.spotify.com/v1/me/playlists', { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
 
-      const tracksData = await tracksResponse.json();
-      const artistsData = await artistsResponse.json();
+      const userData = await userDataResponse.json();
+      const topTracks = await topTracksResponse.json();
+      const topArtists = await topArtistsResponse.json();
+      const recentlyPlayed = await recentlyPlayedResponse.json();
+      const playlists = await playlistsResponse.json();
 
-      setTopTracks(tracksData.items.map(track => ({
-        name: track.name,
-        artist: track.artists[0].name,
-        playCount: Math.floor(Math.random() * 1000) // Simulated play count
-      })));
+      setUserData(userData);
+      setTopTracks(topTracks.items);
+      setTopArtists(topArtists.items);
+      setRecentlyPlayed(recentlyPlayed.items);
+      setPlaylists(playlists.items);
 
-      setTopArtists(artistsData.items.map(artist => ({
-        name: artist.name,
-        playCount: Math.floor(Math.random() * 5000) // Simulated play count
-      })));
+      // Fetch audio features for top tracks
+      const trackIds = topTracks.items.map(track => track.id).join(',');
+      const audioFeaturesResponse = await fetch(`https://api.spotify.com/v1/audio-features?ids=${trackIds}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const audioFeaturesData = await audioFeaturesResponse.json();
+      setAudioFeatures(audioFeaturesData.audio_features);
 
+      // Generate predictions
+      const predictedData = makePredictions(topTracks.items, topArtists.items, audioFeaturesData.audio_features);
+      setPredictions(predictedData);
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const renderTopItem = (item, index, type) => {
-    const playsNeeded = type === 'tracks' ? 
-      dummyProjection.playsNeededForChanges.tracks[item.name] :
-      dummyProjection.playsNeededForChanges.artists[item.name];
+  const makePredictions = (tracks, artists, audioFeatures) => {
+    const predictedTopTracks = tracks.slice(0, 10).map((track, index) => ({
+      ...track,
+      predictedRank: index + 1,
+    }));
+
+    const predictedTopArtists = artists.slice(0, 10).map((artist, index) => ({
+      ...artist,
+      predictedRank: index + 1,
+    }));
+
+    const avgFeatures = audioFeatures.reduce((acc, features) => {
+      Object.keys(features).forEach(key => {
+        if (typeof features[key] === 'number') {
+          acc[key] = (acc[key] || 0) + features[key] / audioFeatures.length;
+        }
+      });
+      return acc;
+    }, {});
+
+    return { tracks: predictedTopTracks, artists: predictedTopArtists, avgFeatures };
+  };
+
+  const renderTopItem = (item, index, type) => (
+    <div className="bg-[#2a2a2a] p-4 rounded-lg hover:bg-[#303030] transition-all duration-300">
+      <div className="flex justify-between items-center">
+        <div>
+          <span className="text-gray-400 mr-2">#{index + 1}</span>
+          <span className="font-medium text-white">{item.name}</span>
+          {type === 'tracks' && (
+            <div className="text-sm text-gray-400">by {item.artists[0].name}</div>
+          )}
+        </div>
+        <div className="text-right">
+          <div className="text-[#1DB954]">{item.popularity} popularity</div>
+        </div>
+      </div>
+      <ProgressBar 
+        current={item.popularity} 
+        max={100}
+      />
+    </div>
+  );
+
+  const renderGenreSection = () => {
+    if (!topArtists || topArtists.length === 0) {
+      return <div>No genre data available</div>;
+    }
+
+    const genreCounts = topArtists
+      .flatMap(artist => artist.genres)
+      .reduce((acc, genre) => {
+        acc[genre] = (acc[genre] || 0) + 1;
+        return acc;
+      }, {});
+
+    const sortedGenres = Object.entries(genreCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
 
     return (
-      <div className="bg-[#2a2a2a] p-4 rounded-lg hover:bg-[#303030] transition-all duration-300">
-        <div className="flex justify-between items-center">
-          <div>
-            <span className="text-gray-400 mr-2">#{index + 1}</span>
-            <span className="font-medium text-white">{item.name}</span>
-            {type === 'tracks' && (
-              <div className="text-sm text-gray-400">by {item.artist}</div>
-            )}
-          </div>
-          <div className="text-right">
-            <div className="text-[#1DB954]">{item.playCount} plays</div>
-            {playsNeeded && (
-              <div className="text-xs text-gray-400">
-                {playsNeeded} more plays for Top 5
+      <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
+        <h3 className="text-xl font-bold text-white mb-4">Top Genres</h3>
+        <div className="space-y-4">
+          {sortedGenres.map(([genre, count]) => (
+            <div key={genre} className="bg-[#2a2a2a] p-4 rounded-lg">
+              <div className="flex justify-between items-center">
+                <span className="text-white capitalize">{genre}</span>
+                <span className="text-[#1DB954]">{count} artists</span>
               </div>
-            )}
-          </div>
+              <ProgressBar current={count} max={Math.max(...Object.values(genreCounts))} />
+            </div>
+          ))}
         </div>
-        <ProgressBar 
-          current={item.playCount} 
-          max={type === 'tracks' ? topTracks[0]?.playCount : topArtists[0]?.playCount}
-        />
       </div>
     );
   };
 
-  const renderGenreSection = () => (
+  const renderRecentlyPlayed = () => (
     <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
-      <h3 className="text-xl font-bold text-white mb-4">Genre Distribution</h3>
+      <h3 className="text-xl font-bold text-white mb-4">Recently Played</h3>
       <div className="space-y-4">
-        {dummyListeningStats.genres.map((genre) => (
-          <div key={genre.name} className="bg-[#2a2a2a] p-4 rounded-lg">
-            <div className="flex justify-between items-center">
-              <span className="text-white">{genre.name}</span>
-              <span className="text-[#1DB954]">{genre.percentage}%</span>
-            </div>
-            <ProgressBar current={genre.percentage} max={100} />
-            {genre.playsNeededForTop > 0 && (
-              <div className="text-xs text-gray-400 mt-2">
-                Need {genre.playsNeededForTop} more plays to become top genre
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderHistoricalComparison = () => (
-    <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
-      <h3 className="text-xl font-bold text-white mb-4">Year-Over-Year Comparison</h3>
-      <div className="space-y-6">
-        {Object.entries(historicalData.yearComparison).map(([year, data]) => (
-          <div key={year} className="bg-[#2a2a2a] p-4 rounded-lg">
-            <div className="text-lg font-medium text-white mb-2">{year}</div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-gray-400">Minutes Listened</div>
-                <div className="text-[#1DB954]">{Math.floor(data.totalMinutes / 60)}h</div>
-              </div>
-              <div>
-                <div className="text-gray-400">Unique Artists</div>
-                <div className="text-[#1DB954]">{data.uniqueArtists}</div>
-              </div>
-              <div>
-                <div className="text-gray-400">Top Genre</div>
-                <div className="text-white">{data.topGenres[0]}</div>
-              </div>
-              <div>
-                <div className="text-gray-400">Top Artist</div>
-                <div className="text-white">{data.topArtists[0]}</div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderListeningPatterns = () => (
-    <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
-      <h3 className="text-xl font-bold text-white mb-4">Listening Patterns</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <h4 className="text-lg text-white mb-3">Weekday</h4>
-          {Object.entries(historicalData.listeningPatterns.weekday).map(([time, data]) => (
-            <div key={time} className="bg-[#2a2a2a] p-4 rounded-lg mb-3">
-              <div className="flex justify-between mb-2">
-                <span className="text-gray-400 capitalize">{time}</span>
-                <span className="text-[#1DB954]">{data.percentage}%</span>
-              </div>
-              <div className="text-sm text-white">
-                Top tracks: {data.favoriteTracks.join(', ')}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div>
-          <h4 className="text-lg text-white mb-3">Weekend</h4>
-          {Object.entries(historicalData.listeningPatterns.weekend).map(([time, data]) => (
-            <div key={time} className="bg-[#2a2a2a] p-4 rounded-lg mb-3">
-              <div className="flex justify-between mb-2">
-                <span className="text-gray-400 capitalize">{time}</span>
-                <span className="text-[#1DB954]">{data.percentage}%</span>
-              </div>
-              <div className="text-sm text-white">
-                Top tracks: {data.favoriteTracks.join(', ')}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderMilestones = () => (
-    <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
-      <h3 className="text-xl font-bold text-white mb-4">Milestones</h3>
-      <div className="space-y-4">
-        {historicalData.milestones.map((milestone, index) => (
+        {recentlyPlayed.slice(0, 10).map((item, index) => (
           <div key={index} className="bg-[#2a2a2a] p-4 rounded-lg">
-            <div className="flex justify-between items-center mb-2">
-              <div>
-                <div className="text-white font-medium">{milestone.title}</div>
-                <div className="text-sm text-gray-400">{milestone.description}</div>
-              </div>
-              <Award className="w-6 h-6 text-[#1DB954]" />
-            </div>
-            <ProgressBar 
-              current={milestone.current}
-              max={milestone.target}
-              showPercentage={true}
-            />
+            <div className="text-white">{item.track.name} by {item.track.artists[0].name}</div>
+            <div className="text-sm text-gray-400">Played at: {new Date(item.played_at).toLocaleString()}</div>
           </div>
         ))}
       </div>
     </div>
   );
 
-  const renderProjectionsSection = () => (
+  const renderPredictions = () => (
     <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
-      <h3 className="text-xl font-bold text-white mb-4">Year-End Projections</h3>
+      <h3 className="text-xl font-bold text-white mb-4">Your 2024 Wrapped Predictions</h3>
       <div className="space-y-4">
-        <div className="flex justify-between p-3 bg-[#2a2a2a] rounded-lg">
-          <span className="text-gray-400">Projected Total Time</span>
-          <span className="text-[#1DB954]">{Math.floor(dummyProjection.estimatedMinutes / 60)}h</span>
-        </div>
-        <div className="flex justify-between p-3 bg-[#2a2a2a] rounded-lg">
-          <span className="text-gray-400">Projected Artists</span>
-          <span className="text-[#1DB954]">{dummyProjection.estimatedArtists}</span>
-        </div>
-        <div className="flex justify-between p-3 bg-[#2a2a2a] rounded-lg">
-          <span className="text-gray-400">Projected Top Genre</span>
-          <span className="text-[#1DB954]">{dummyProjection.projectedTopGenre}</span>
-        </div>
-        <div className="text-sm text-gray-400 mt-2">
-          Based on your current listening habits and {dummyProjection.daysUntilWrapped} days until Wrapped
+        <h4 className="text-lg font-semibold text-white">Predicted Top Tracks</h4>
+        {predictions.tracks?.slice(0, 5).map((track, index) => renderTopItem(track, index, 'tracks'))}
+        <h4 className="text-lg font-semibold text-white mt-6">Predicted Top Artists</h4>
+        {predictions.artists?.slice(0, 5).map((artist, index) => renderTopItem(artist, index, 'artists'))}
+        <h4 className="text-lg font-semibold text-white mt-6">Your Music Style</h4>
+        <div className="grid grid-cols-2 gap-4">
+          {Object.entries(predictions.avgFeatures || {}).map(([feature, value]) => (
+            <div key={feature} className="bg-[#1DB954] bg-opacity-20 p-2 rounded">
+              <span className="text-white capitalize">{feature.replace('_', ' ')}: </span>
+              <span className="text-[#1DB954] font-bold">{value.toFixed(2)}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -263,16 +217,29 @@ function MainPage({ token }) {
       <div className="w-full max-w-6xl mx-auto">
         {/* Header */}
         <div className="bg-gradient-to-r from-[#1DB954] to-[#179443] rounded-xl shadow-lg mb-6 p-8">
-          <h1 className="text-3xl font-bold mb-2">Your 2024 Wrapped Progress</h1>
+          <h1 className="text-3xl font-bold mb-2">Your Spotify Stats</h1>
           <p className="text-lg opacity-90">
-            {dummyProjection.daysUntilWrapped} days until Wrapped cutoff
+            Based on your {timeRange === 'short_term' ? 'last 4 weeks' : timeRange === 'medium_term' ? 'last 6 months' : 'all time'} listening history
           </p>
+        </div>
+
+        {/* Time Range Selector */}
+        <div className="mb-6">
+          <select 
+            value={timeRange} 
+            onChange={(e) => setTimeRange(e.target.value)}
+            className="bg-[#282828] text-white p-2 rounded"
+          >
+            <option value="short_term">Last 4 Weeks</option>
+            <option value="medium_term">Last 6 Months</option>
+            <option value="long_term">All Time</option>
+          </select>
         </div>
 
         {/* Navigation Tabs */}
         <div className="bg-[#282828] rounded-xl p-2 shadow-lg mb-6">
           <div className="flex flex-wrap gap-2">
-            {['overview', 'top tracks', 'top artists', 'genres', 'history', 'patterns', 'milestones'].map((tab) => (
+            {['overview', 'top tracks', 'top artists', 'genres', 'recently played', 'predictions'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -294,27 +261,22 @@ function MainPage({ token }) {
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 <StatCard 
-                  icon={Clock}
-                  value={`${Math.floor(dummyListeningStats.totalMinutes / 60)}h`}
-                  label="Listening Time"
-                  subValue={`Projected: ${Math.floor(dummyProjection.estimatedMinutes / 60)}h`}
-                  trend={5}
-                />
-                <StatCard 
                   icon={Music}
-                  value={topArtists.length}
-                  label="Unique Artists"
-                  subValue={`Projected: ${dummyProjection.estimatedArtists}`}
-                  trend={8}
+                  value={topTracks.length}
+                  label="Top Tracks"
                 />
                 <StatCard 
                   icon={Disc}
-                  value={dummyListeningStats.currentTopGenre}
-                  label="Top Genre"
-                  subValue={`Trending: ${dummyProjection.projectedTopGenre}`}
+                  value={topArtists.length}
+                  label="Top Artists"
+                />
+                <StatCard 
+                  icon={Clock}
+                  value={recentlyPlayed.length}
+                  label="Recently Played Tracks"
                 />
               </div>
-              {renderProjectionsSection()}
+              {renderPredictions()}
             </>
           )}
 
@@ -357,9 +319,8 @@ function MainPage({ token }) {
           )}
 
           {activeTab === 'genres' && renderGenreSection()}
-          {activeTab === 'history' && renderHistoricalComparison()}
-          {activeTab === 'patterns' && renderListeningPatterns()}
-          {activeTab === 'milestones' && renderMilestones()}
+          {activeTab === 'recently played' && renderRecentlyPlayed()}
+          {activeTab === 'predictions' && renderPredictions()}
         </div>
       </div>
     </div>
