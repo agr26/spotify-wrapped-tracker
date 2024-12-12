@@ -7,26 +7,40 @@ function SpotifyCallback() {
 
   useEffect(() => {
     const handleCallback = async () => {
+      console.log('CALLBACK COMPONENT MOUNTED');
+      
       try {
-        console.log('Callback: Starting authentication process');
+        // Log the full URL
+        console.log('Full URL:', window.location.href);
+
         const urlParams = new URLSearchParams(window.location.search);
         const code = urlParams.get('code');
-
-        console.log('Callback: Authorization Code', code);
+        
+        console.log('Authorization Code:', code);
 
         if (code) {
-          // Exchange the code for tokens
-          await exchangeCodeForToken(code);
-          console.log('Callback: Token exchange successful');
-          
-          // Explicitly navigate to dashboard
-          navigate('/dashboard', { replace: true });
+          try {
+            console.log('Attempting to exchange code for token');
+            
+            // Actually exchange the code
+            const tokenResponse = await exchangeCodeForToken(code);
+            
+            console.log('Token Exchange Successful:', tokenResponse);
+            console.log('Access Token:', localStorage.getItem('spotify_access_token'));
+
+            // Multiple navigation attempts
+            window.location.href = '/dashboard';
+            navigate('/dashboard', { replace: true });
+          } catch (exchangeError) {
+            console.error('TOKEN EXCHANGE FAILED', exchangeError);
+            navigate('/login');
+          }
         } else {
-          console.error('Callback: No authorization code found');
+          console.error('NO AUTHORIZATION CODE FOUND');
           navigate('/login');
         }
       } catch (error) {
-        console.error('Callback: Authentication failed', error);
+        console.error('AUTHENTICATION PROCESS FAILED', error);
         navigate('/login');
       }
     };

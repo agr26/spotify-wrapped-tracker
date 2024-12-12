@@ -2,7 +2,7 @@ import axios from 'axios';
 import pkceChallenge from 'pkce-challenge';
 
 const SPOTIFY_CLIENT_ID = '9b201755ec114123a092304a408e408e';
-const SPOTIFY_REDIRECT_URI = 'http://localhost:3000/';
+const SPOTIFY_REDIRECT_URI = 'http://localhost:3000/callback';
 const SPOTIFY_SCOPES = [
   'user-read-private', 
   'user-read-email', 
