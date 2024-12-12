@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, Music, BarChart2, Disc, Calendar, 
          TrendingUp, History, Award, Sun, Moon } from 'lucide-react';
-import { dummyListeningStats, dummyProjection, historicalData } from '../data/dummyData';
-import { useNavigate } from 'react-router-dom';
-import { spotifyLogout } from '../services/spotifyAuth';
+import { dummyListeningStats, dummyProjection, historicalData } from './dummyData';
 
 // Reusable components
 const ProgressBar = ({ current, max, color = "#1DB954", showPercentage = false }) => (
@@ -41,27 +39,51 @@ const StatCard = ({ icon: Icon, value, label, subValue, trend }) => (
   </div>
 );
 
-function SpotifyStatsTracker() {
-  const navigate = useNavigate();
+function MainPage({ token }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [showFullList, setShowFullList] = useState(false);
   const [timeRange, setTimeRange] = useState('all');
+  const [topTracks, setTopTracks] = useState([]);
+  const [topArtists, setTopArtists] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Authentication check
   useEffect(() => {
-    const token = localStorage.getItem('spotify_access_token');
-    console.log('Dashboard Token Check:', token);
-    
-    if (!token) {
-      // Redirect to login if no token
-      navigate('/login');
+    if (token) {
+      fetchUserData();
     }
-  }, [navigate]);
+  }, [token]);
 
-  // Logout handler
-  const handleLogout = () => {
-    spotifyLogout();
-    navigate('/login');
+  const fetchUserData = async () => {
+    setLoading(true);
+    try {
+      const [tracksResponse, artistsResponse] = await Promise.all([
+        fetch('https://api.spotify.com/v1/me/top/tracks?limit=50', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch('https://api.spotify.com/v1/me/top/artists?limit=50', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ]);
+
+      const tracksData = await tracksResponse.json();
+      const artistsData = await artistsResponse.json();
+
+      setTopTracks(tracksData.items.map(track => ({
+        name: track.name,
+        artist: track.artists[0].name,
+        playCount: Math.floor(Math.random() * 1000) // Simulated play count
+      })));
+
+      setTopArtists(artistsData.items.map(artist => ({
+        name: artist.name,
+        playCount: Math.floor(Math.random() * 5000) // Simulated play count
+      })));
+
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const renderTopItem = (item, index, type) => {
@@ -90,7 +112,7 @@ function SpotifyStatsTracker() {
         </div>
         <ProgressBar 
           current={item.playCount} 
-          max={type === 'tracks' ? dummyListeningStats.topTracks[0].playCount : dummyListeningStats.topArtists[0].playCount}
+          max={type === 'tracks' ? topTracks[0]?.playCount : topArtists[0]?.playCount}
         />
       </div>
     );
@@ -116,7 +138,7 @@ function SpotifyStatsTracker() {
         ))}
       </div>
     </div>
-  );  
+  );
 
   const renderHistoricalComparison = () => (
     <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
@@ -230,19 +252,15 @@ function SpotifyStatsTracker() {
         </div>
       </div>
     </div>
-  );  
+  );
+
+  if (loading) {
+    return <div className="min-h-screen bg-black text-white flex items-center justify-center">Loading...</div>;
+  }
 
   return (
     <div className="min-h-screen bg-black text-white p-4">
       <div className="w-full max-w-6xl mx-auto">
-        {/* Logout Button */}
-        <button 
-          onClick={handleLogout}
-          className="absolute top-4 right-4 bg-red-600 text-white px-4 py-2 rounded"
-        >
-          Logout
-        </button>
-
         {/* Header */}
         <div className="bg-gradient-to-r from-[#1DB954] to-[#179443] rounded-xl shadow-lg mb-6 p-8">
           <h1 className="text-3xl font-bold mb-2">Your 2024 Wrapped Progress</h1>
@@ -284,7 +302,7 @@ function SpotifyStatsTracker() {
                 />
                 <StatCard 
                   icon={Music}
-                  value={dummyListeningStats.uniqueArtists}
+                  value={topArtists.length}
                   label="Unique Artists"
                   subValue={`Projected: ${dummyProjection.estimatedArtists}`}
                   trend={8}
@@ -305,7 +323,7 @@ function SpotifyStatsTracker() {
               <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
                 <h3 className="text-xl font-bold text-white mb-4">Your Top Tracks</h3>
                 <div className="space-y-4">
-                  {dummyListeningStats.topTracks
+                  {topTracks
                     .slice(0, showFullList ? undefined : 5)
                     .map((track, index) => renderTopItem(track, index, 'tracks'))}
                 </div>
@@ -315,7 +333,7 @@ function SpotifyStatsTracker() {
                 >
                   Show {showFullList ? 'less' : 'more'}
                 </button>
-                </div>
+              </div>
             </div>
           )}
 
@@ -324,7 +342,7 @@ function SpotifyStatsTracker() {
               <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
                 <h3 className="text-xl font-bold text-white mb-4">Your Top Artists</h3>
                 <div className="space-y-4">
-                  {dummyListeningStats.topArtists
+                  {topArtists
                     .slice(0, showFullList ? undefined : 5)
                     .map((artist, index) => renderTopItem(artist, index, 'artists'))}
                 </div>
@@ -348,4 +366,4 @@ function SpotifyStatsTracker() {
   );
 }
 
-export default SpotifyStatsTracker;
+export default MainPage;
