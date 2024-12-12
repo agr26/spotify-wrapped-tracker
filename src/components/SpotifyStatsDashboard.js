@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Clock, Music, BarChart2, Disc, Calendar, 
          TrendingUp, History, Award, Sun, Moon } from 'lucide-react';
 import { dummyListeningStats, dummyProjection, historicalData } from '../data/dummyData';
@@ -42,9 +42,27 @@ const StatCard = ({ icon: Icon, value, label, subValue, trend }) => (
 );
 
 function SpotifyStatsTracker() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [showFullList, setShowFullList] = useState(false);
   const [timeRange, setTimeRange] = useState('all');
+
+  // Authentication check
+  useEffect(() => {
+    const token = localStorage.getItem('spotify_access_token');
+    console.log('Dashboard Token Check:', token);
+    
+    if (!token) {
+      // Redirect to login if no token
+      navigate('/login');
+    }
+  }, [navigate]);
+
+  // Logout handler
+  const handleLogout = () => {
+    spotifyLogout();
+    navigate('/login');
+  };
 
   const renderTopItem = (item, index, type) => {
     const playsNeeded = type === 'tracks' ? 
@@ -217,6 +235,14 @@ function SpotifyStatsTracker() {
   return (
     <div className="min-h-screen bg-black text-white p-4">
       <div className="w-full max-w-6xl mx-auto">
+        {/* Logout Button */}
+        <button 
+          onClick={handleLogout}
+          className="absolute top-4 right-4 bg-red-600 text-white px-4 py-2 rounded"
+        >
+          Logout
+        </button>
+
         {/* Header */}
         <div className="bg-gradient-to-r from-[#1DB954] to-[#179443] rounded-xl shadow-lg mb-6 p-8">
           <h1 className="text-3xl font-bold mb-2">Your 2024 Wrapped Progress</h1>
@@ -289,7 +315,7 @@ function SpotifyStatsTracker() {
                 >
                   Show {showFullList ? 'less' : 'more'}
                 </button>
-              </div>
+                </div>
             </div>
           )}
 

@@ -2,7 +2,7 @@ import axios from 'axios';
 import pkceChallenge from 'pkce-challenge';
 
 const SPOTIFY_CLIENT_ID = '9b201755ec114123a092304a408e408e';
-const SPOTIFY_REDIRECT_URI = 'http://localhost:3000/callback';
+const SPOTIFY_REDIRECT_URI = 'http://localhost:3000/';
 const SPOTIFY_SCOPES = [
   'user-read-private', 
   'user-read-email', 
@@ -23,7 +23,6 @@ export const generateCodeVerifier = () => {
 export const initiateSpotifyLogin = () => {
   const { codeVerifier, codeChallenge } = generateCodeVerifier();
   
-  // Store code verifier in localStorage for later use
   localStorage.setItem('spotify_code_verifier', codeVerifier);
 
   const authUrl = new URL('https://accounts.spotify.com/authorize');
@@ -58,7 +57,6 @@ export const exchangeCodeForToken = async (authorizationCode) => {
       }
     );
 
-    // Store tokens securely
     localStorage.setItem('spotify_access_token', response.data.access_token);
     localStorage.setItem('spotify_refresh_token', response.data.refresh_token);
 
@@ -67,6 +65,19 @@ export const exchangeCodeForToken = async (authorizationCode) => {
     console.error('Token exchange failed', error);
     throw error;
   }
+};
+
+// Check if user is logged in
+export const isUserLoggedIn = () => {
+  return !!localStorage.getItem('spotify_access_token');
+};
+
+// Logout
+export const spotifyLogout = () => {
+  localStorage.removeItem('spotify_access_token');
+  localStorage.removeItem('spotify_refresh_token');
+  localStorage.removeItem('spotify_code_verifier');
+  window.location.href = '/login';
 };
 
 // Refresh Access Token
@@ -92,20 +103,6 @@ export const refreshAccessToken = async () => {
     return response.data.access_token;
   } catch (error) {
     console.error('Token refresh failed', error);
-    // Redirect to login if refresh fails
     initiateSpotifyLogin();
   }
-};
-
-// Check if user is logged in
-export const isUserLoggedIn = () => {
-  return !!localStorage.getItem('spotify_access_token');
-};
-
-// Logout
-export const spotifyLogout = () => {
-  localStorage.removeItem('spotify_access_token');
-  localStorage.removeItem('spotify_refresh_token');
-  localStorage.removeItem('spotify_code_verifier');
-  window.location.href = '/';
 };

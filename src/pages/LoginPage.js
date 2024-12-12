@@ -6,10 +6,13 @@ function LoginPage() {
     <div className="min-h-screen bg-black flex items-center justify-center">
       <div className="text-center">
         <h1 className="text-4xl font-bold text-[#1DB954] mb-6">
-          Spotify Stats Tracker
+          WrapTrack
         </h1>
         <button 
-          onClick={initiateSpotifyLogin}
+          onClick={() => {
+            console.log('Login button clicked');
+            initiateSpotifyLogin();
+          }}
           className="bg-[#1DB954] hover:bg-[#1ed760] text-white font-bold py-3 px-6 rounded-full transition-all"
         >
           Connect with Spotify
