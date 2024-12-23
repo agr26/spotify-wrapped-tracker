@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import SpotifyLogin from './SpotifyLogin';
-import MainPage from './MainPage';
+import SpotifyLogin from './components/SpotifyLogin';
+import MainPage from './components/MainPage';
 
 function App() {
   const [token, setToken] = useState(null);
