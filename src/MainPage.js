@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Clock, Music, BarChart2, Disc, Calendar, TrendingUp, 
-  History, Upload, Star, Album, Sun, Moon, CloudRain 
+  History, Upload, Star, Album 
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { loadSpotifyData } from './spotifyDataLoader';
@@ -25,15 +25,8 @@ const ProgressBar = ({ current, max, color = "#1DB954", showPercentage = false }
   </div>
 );
 
-const StatCard = ({ icon: Icon, value, label, subValue, trend, onClick, isActive }) => (
-  <div 
-    onClick={onClick}
-    className={`
-      bg-[#282828] p-6 rounded-xl shadow-lg hover:bg-[#2a2a2a] transition-all duration-300
-      ${onClick ? 'cursor-pointer' : ''}
-      ${isActive ? 'border-2 border-[#1DB954]' : ''}
-    `}
-  >
+const StatCard = ({ icon: Icon, value, label, subValue, trend }) => (
+  <div className="bg-[#282828] p-6 rounded-xl shadow-lg hover:bg-[#2a2a2a] transition-all duration-300">
     <div className="text-center">
       <Icon className="w-8 h-8 mx-auto mb-3 text-[#1DB954]" />
       <div className="text-2xl font-bold text-white mb-1">{value}</div>
@@ -41,9 +34,9 @@ const StatCard = ({ icon: Icon, value, label, subValue, trend, onClick, isActive
       {subValue && (
         <div className="text-xs text-[#1DB954] mt-2 font-medium">{subValue}</div>
       )}
-      {trend && (
+      {trend !== undefined && (
         <div className={`text-xs mt-2 ${trend > 0 ? 'text-green-400' : 'text-red-400'}`}>
-          {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}% vs last period
+          {trend > 0 ? '↑' : '↓'} {Math.abs(Math.round(trend))}% vs last period
         </div>
       )}
     </div>
@@ -60,30 +53,29 @@ const MainPage = () => {
   const [showFullList, setShowFullList] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState('streams');
   const [error, setError] = useState(null);
-  const [spotifyData, setSpotifyData] = useState(null);
+  const [currentData, setCurrentData] = useState(null);
 
-  // Load data on component mount
+  // Load data on component mount and when time range changes
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
-        // Load raw Spotify data
-        const rawData = await loadSpotifyData();
-        setSpotifyData(rawData);
+        const rawData = loadSpotifyData();
         
-        // Process current listening stats
-        const processedStats = processListeningStats(
-          rawData.tracks,
-          rawData.artists,
-          rawData.recentlyPlayed
-        );
+        // Filter data based on selected time range
+        const filteredData = filterDataByTimeRange(rawData, selectedTimeRange);
+        
+        // Process the filtered data
+        const processedStats = processListeningStats(filteredData);
         setHistoricalData(processedStats);
         
-        // Generate predictions
+        // Generate predictions based on the processed data
         if (processedStats) {
           const predictionData = generatePredictions(processedStats, selectedTimeRange);
           setWrappedPredictions(predictionData);
         }
+        
+        setCurrentData(filteredData);
       } catch (err) {
         console.error('Error loading data:', err);
         setError(err.message);
@@ -94,6 +86,27 @@ const MainPage = () => {
 
     loadData();
   }, [selectedTimeRange]);
+
+  const filterDataByTimeRange = (data, range) => {
+    const now = new Date();
+    let cutoffDate = new Date();
+
+    switch (range) {
+      case '30days':
+        cutoffDate.setDate(cutoffDate.getDate() - 30);
+        break;
+      case '90days':
+        cutoffDate.setDate(cutoffDate.getDate() - 90);
+        break;
+      case 'year':
+        cutoffDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        return data; // 'all' time range
+    }
+
+    return data.filter(item => new Date(item.ts) >= cutoffDate);
+  };
 
   const renderOverviewSection = () => {
     if (!historicalData) return null;
@@ -131,13 +144,13 @@ const MainPage = () => {
 
     const monthlyData = Object.entries(historicalData.monthlyStats)
       .map(([month, stats]) => ({
-        month,
+        month: new Date(month).toLocaleDateString('default', { month: 'short', year: 'numeric' }),
         streams: stats.streams || 0,
         minutes: stats.minutes || 0,
         uniqueTracks: stats.uniqueTracks || 0,
         uniqueArtists: stats.uniqueArtists || 0
       }))
-      .slice(-12);
+      .slice(-12); // Get last 12 months
 
     const metrics = {
       streams: { label: 'Streams', color: '#1DB954' },
@@ -231,6 +244,14 @@ const MainPage = () => {
                 </div>
               ))}
           </div>
+          {historicalData.topArtists?.length > 10 && (
+            <button
+              onClick={() => setShowFullList(!showFullList)}
+              className="mt-4 text-[#1DB954] hover:text-[#1ed760] transition-all"
+            >
+              Show {showFullList ? 'less' : 'more'}
+            </button>
+          )}
         </div>
 
         {/* Top Tracks */}
@@ -258,13 +279,21 @@ const MainPage = () => {
                 </div>
               ))}
           </div>
+          {historicalData.topTracks?.length > 10 && (
+            <button
+              onClick={() => setShowFullList(!showFullList)}
+              className="mt-4 text-[#1DB954] hover:text-[#1ed760] transition-all"
+            >
+              Show {showFullList ? 'less' : 'more'}
+            </button>
+          )}
         </div>
       </div>
     );
   };
 
   const renderPredictionsSection = () => {
-    if (!wrappedPredictions) return null;
+    if (!wrappedPredictions || !historicalData) return null;
 
     return (
       <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
@@ -278,11 +307,11 @@ const MainPage = () => {
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-white">Minutes Listened</span>
                   <span className="text-[#1DB954]">
-                    {historicalData?.totalMinutes?.toLocaleString() || 0}
+                    {historicalData.totalMinutes.toLocaleString()}
                   </span>
                 </div>
                 <ProgressBar 
-                  current={historicalData?.totalMinutes || 0} 
+                  current={historicalData.totalMinutes} 
                   max={wrappedPredictions.estimatedMinutes}
                   showPercentage
                 />
@@ -292,11 +321,11 @@ const MainPage = () => {
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-white">Unique Artists</span>
                   <span className="text-[#1DB954]">
-                    {historicalData?.uniqueArtists?.toLocaleString() || 0}
+                    {historicalData.uniqueArtists.toLocaleString()}
                   </span>
                 </div>
                 <ProgressBar 
-                  current={historicalData?.uniqueArtists || 0} 
+                  current={historicalData.uniqueArtists} 
                   max={wrappedPredictions.estimatedArtists}
                   showPercentage
                 />
@@ -305,10 +334,10 @@ const MainPage = () => {
           </div>
 
           <div>
-            <h4 className="text-lg font-semibold text-white mb-3">Projected Final Stats</h4>
+            <h4 className="text-lg font-semibold text-white mb-3">Year-End Projections</h4>
             <div className="space-y-4">
               <div className="bg-[#2a2a2a] p-4 rounded-lg">
-                <div className="text-white mb-2">Estimated Final Minutes</div>
+                <div className="text-white mb-2">Estimated Minutes</div>
                 <div className="text-3xl font-bold text-[#1DB954]">
                   {wrappedPredictions.estimatedMinutes.toLocaleString()}
                 </div>
@@ -340,6 +369,36 @@ const MainPage = () => {
             </div>
           </div>
         </div>
+
+        {/* Tracks needed for changes */}
+        {Object.keys(wrappedPredictions.playsNeededForChanges.tracks).length > 0 && (
+          <div className="bg-[#2a2a2a] p-4 rounded-lg mt-6">
+            <h4 className="text-lg font-semibold text-white mb-3">Tracks Needed for Top 5</h4>
+            <div className="space-y-2">
+              {Object.entries(wrappedPredictions.playsNeededForChanges.tracks).map(([track, plays]) => (
+                <div key={track} className="flex justify-between items-center">
+                  <span className="text-white">{track}</span>
+                  <span className="text-[#1DB954]">{plays} more plays needed</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Artists needed for changes */}
+        {Object.keys(wrappedPredictions.playsNeededForChanges.artists).length > 0 && (
+          <div className="bg-[#2a2a2a] p-4 rounded-lg mt-6">
+            <h4 className="text-lg font-semibold text-white mb-3">Artists Needed for Top 5</h4>
+            <div className="space-y-2">
+              {Object.entries(wrappedPredictions.playsNeededForChanges.artists).map(([artist, plays]) => (
+                <div key={artist} className="flex justify-between items-center">
+                  <span className="text-white">{artist}</span>
+                  <span className="text-[#1DB954]">{plays} more plays needed</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -365,7 +424,7 @@ const MainPage = () => {
       <div className="w-full max-w-6xl mx-auto">
         {/* Header */}
         <div className="bg-gradient-to-r from-[#1DB954] to-[#179443] rounded-xl shadow-lg mb-6 p-8">
-        <h1 className="text-3xl font-bold mb-2">Your Spotify Stats & Predictions</h1>
+          <h1 className="text-3xl font-bold mb-2">Your Spotify Stats & Predictions</h1>
           <p className="text-lg opacity-90">
             Tracking your journey to Wrapped 2025
           </p>

@@ -16,7 +16,7 @@ export const loadSpotifyData = () => {
     ...history2024_5
   ];
 
-  // Format the data to match our processor's expectations
+  // Format and filter the data
   const formattedData = allData
     .filter(item => item.endTime && item.trackName) // Filter out any invalid entries
     .map(item => ({
@@ -25,7 +25,8 @@ export const loadSpotifyData = () => {
       master_metadata_track_name: item.trackName || 'Unknown Track',
       master_metadata_album_artist_name: item.artistName || 'Unknown Artist',
       master_metadata_album_name: item.albumName || 'Unknown Album'
-    }));
+    }))
+    .sort((a, b) => new Date(a.ts) - new Date(b.ts)); // Sort by timestamp
 
   return formattedData;
 };
