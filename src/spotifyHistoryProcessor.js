@@ -1,48 +1,19 @@
-export const processStreamingHistory = async (files) => {
-  const allHistory = [];
-  const extendedHistory = [];
-  
-  // Process each JSON file
-  for (const file of files) {
-    try {
-      const text = await file.text();
-      const data = JSON.parse(text);
-      
-      // Check file type based on content structure
-      if (data[0]?.ts) {
-        // Regular streaming history
-        allHistory.push(...data);
-      } else if (data[0]?.endTime) {
-        // Extended streaming history
-        extendedHistory.push(...data.map(item => ({
-          ts: item.endTime,
-          ms_played: item.msPlayed,
-          master_metadata_track_name: item.trackName,
-          master_metadata_album_artist_name: item.artistName,
-          master_metadata_album_name: item.albumName
-        })));
-      }
-    } catch (error) {
-      console.error('Error processing file ${file.name}:', error);
-    }
-  }
-  
-  // Combine and sort all history
-  const combinedHistory = [...allHistory, ...extendedHistory]
-    .sort((a, b) => new Date(a.ts) - new Date(b.ts));
+export const processStreamingHistory = (history) => {
+  // Sort by timestamp
+  const sortedHistory = [...history].sort((a, b) => new Date(a.ts) - new Date(b.ts));
   
   // Calculate statistics
-  const stats = calculateHistoryStats(combinedHistory);
-  const yearlyStats = calculateYearlyStats(combinedHistory);
-  const monthlyStats = calculateMonthlyStats(combinedHistory);
-  const trends = calculateTrends(combinedHistory);
+  const stats = calculateHistoryStats(sortedHistory);
+  const yearlyStats = calculateYearlyStats(sortedHistory);
+  const monthlyStats = calculateMonthlyStats(sortedHistory);
+  const trends = calculateTrends(sortedHistory);
   
   return {
     stats,
     yearlyStats,
     monthlyStats,
     trends,
-    rawHistory: combinedHistory
+    rawHistory: sortedHistory
   };
 };
 

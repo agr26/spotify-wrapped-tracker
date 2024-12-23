@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Clock, Music, BarChart2, Disc, Calendar, TrendingUp, 
   History, Upload, Star, Album, Sun, Moon, CloudRain 
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import HistoryUploader from './HistoryUploader';
-import { predictWrapped } from './spotifyHistoryProcessor';
+import { loadSpotifyData } from './spotifyDataLoader';
+import { processStreamingHistory, predictWrapped } from './spotifyHistoryProcessor';
 
 // Reusable components
 const ProgressBar = ({ current, max, color = "#1DB954", showPercentage = false }) => (
@@ -51,23 +51,38 @@ const StatCard = ({ icon: Icon, value, label, subValue, trend, onClick, isActive
 );
 
 const MainPage = () => {
-  // State for history data
+  // State
+  const [loading, setLoading] = useState(true);
   const [historicalData, setHistoricalData] = useState(null);
   const [wrappedPredictions, setWrappedPredictions] = useState(null);
-  
-  // UI state
-  const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedTimeRange, setSelectedTimeRange] = useState('all');
   const [showFullList, setShowFullList] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState('streams');
+  const [error, setError] = useState(null);
 
-  // Process historical data when uploaded
-  const handleHistoryProcessed = async (data) => {
-    setHistoricalData(data);
-    const predictions = await predictWrapped(data.rawHistory);
-    setWrappedPredictions(predictions);
-  };
+  // Load data on component mount
+  useEffect(() => {
+    const loadData = () => {
+      try {
+        setLoading(true);
+        // Load and process data
+        const rawData = loadSpotifyData();
+        const processed = processStreamingHistory(rawData);
+        setHistoricalData(processed);
+        
+        const predictions = predictWrapped(rawData);
+        setWrappedPredictions(predictions);
+      } catch (err) {
+        console.error('Error loading data:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
 
   const getTimeRangeData = () => {
     if (!historicalData) return null;
@@ -264,15 +279,15 @@ const MainPage = () => {
                   />
                 </div>
               ))}
+            {historicalData.stats.topArtists.length > 10 && (
+              <button
+                onClick={() => setShowFullList(!showFullList)}
+                className="mt-4 text-[#1DB954] hover:text-[#1ed760] transition-all"
+              >
+                Show {showFullList ? 'less' : 'more'}
+              </button>
+            )}
           </div>
-          {historicalData.stats.topArtists.length > 10 && (
-            <button
-              onClick={() => setShowFullList(!showFullList)}
-              className="mt-4 text-[#1DB954] hover:text-[#1ed760] transition-all"
-            >
-              Show {showFullList ? 'less' : 'more'}
-            </button>
-          )}
         </div>
 
         {/* Top Tracks */}
@@ -298,15 +313,15 @@ const MainPage = () => {
                   />
                 </div>
               ))}
+            {historicalData.stats.topTracks.length > 10 && (
+              <button
+                onClick={() => setShowFullList(!showFullList)}
+                className="mt-4 text-[#1DB954] hover:text-[#1ed760] transition-all"
+              >
+                Show {showFullList ? 'less' : 'more'}
+              </button>
+            )}
           </div>
-          {historicalData.stats.topTracks.length > 10 && (
-            <button
-              onClick={() => setShowFullList(!showFullList)}
-              className="mt-4 text-[#1DB954] hover:text-[#1ed760] transition-all"
-            >
-              Show {showFullList ? 'less' : 'more'}
-            </button>
-          )}
         </div>
 
         {/* Top Albums */}
@@ -332,15 +347,15 @@ const MainPage = () => {
                   />
                 </div>
               ))}
+            {historicalData.stats.topAlbums.length > 10 && (
+              <button
+                onClick={() => setShowFullList(!showFullList)}
+                className="mt-4 text-[#1DB954] hover:text-[#1ed760] transition-all"
+              >
+                Show {showFullList ? 'less' : 'more'}
+              </button>
+            )}
           </div>
-          {historicalData.stats.topAlbums.length > 10 && (
-            <button
-              onClick={() => setShowFullList(!showFullList)}
-              className="mt-4 text-[#1DB954] hover:text-[#1ed760] transition-all"
-            >
-              Show {showFullList ? 'less' : 'more'}
-            </button>
-          )}
         </div>
       </div>
     );
@@ -355,7 +370,7 @@ const MainPage = () => {
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div>
-          <h4 className="text-lg font-semibold text-white mb-3">Current Progress</h4>
+            <h4 className="text-lg font-semibold text-white mb-3">Current Progress</h4>
             <div className="space-y-4">
               <div className="bg-[#2a2a2a] p-4 rounded-lg">
                 <div className="flex justify-between items-center mb-2">
@@ -423,47 +438,25 @@ const MainPage = () => {
             </div>
           </div>
         </div>
-
-        {wrappedPredictions.currentStats.topArtists && (
-          <div className="mt-6">
-            <h4 className="text-lg font-semibold text-white mb-3">Current Top Artists</h4>
-            <div className="space-y-3">
-              {wrappedPredictions.currentStats.topArtists.slice(0, 5).map((artist, index) => (
-                <div key={artist.name} className="bg-[#2a2a2a] p-3 rounded-lg">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span className="text-gray-400">#{index + 1}</span>
-                      <span className="text-white ml-2">{artist.name}</span>
-                    </div>
-                    <span className="text-[#1DB954]">{artist.playCount} plays</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {wrappedPredictions.currentStats.topTracks && (
-          <div className="mt-6">
-            <h4 className="text-lg font-semibold text-white mb-3">Current Top Tracks</h4>
-            <div className="space-y-3">
-              {wrappedPredictions.currentStats.topTracks.slice(0, 5).map((track, index) => (
-                <div key={track.name} className="bg-[#2a2a2a] p-3 rounded-lg">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span className="text-gray-400">#{index + 1}</span>
-                      <span className="text-white ml-2">{track.name}</span>
-                    </div>
-                    <span className="text-[#1DB954]">{track.playCount} plays</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     );
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-xl">Loading your Spotify data...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-xl text-red-500">Error loading data: {error}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black text-white p-4">
@@ -476,51 +469,45 @@ const MainPage = () => {
           </p>
         </div>
 
-        {!historicalData ? (
-          <HistoryUploader onHistoryProcessed={handleHistoryProcessed} />
-        ) : (
-          <>
-            {/* Time Range Selector */}
-            <div className="mb-6">
-              <select 
-                value={selectedTimeRange} 
-                onChange={(e) => setSelectedTimeRange(e.target.value)}
-                className="bg-[#282828] text-white p-2 rounded"
+        {/* Time Range Selector */}
+        <div className="mb-6">
+          <select 
+            value={selectedTimeRange} 
+            onChange={(e) => setSelectedTimeRange(e.target.value)}
+            className="bg-[#282828] text-white p-2 rounded"
+          >
+            <option value="all">All Time</option>
+            <option value="year">This Year</option>
+            <option value="90days">Last 90 Days</option>
+            <option value="30days">Last 30 Days</option>
+          </select>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="bg-[#282828] rounded-xl p-2 shadow-lg mb-6">
+          <div className="flex flex-wrap gap-2">
+            {['overview', 'history', 'predictions'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-6 py-3 rounded-lg font-medium transition-all duration-300 ${
+                  activeTab === tab
+                    ? 'bg-[#1DB954] text-white'
+                    : 'text-gray-400 hover:text-white hover:bg-[#2a2a2a]'
+                }`}
               >
-                <option value="all">All Time</option>
-                <option value="year">This Year</option>
-                <option value="90days">Last 90 Days</option>
-                <option value="30days">Last 30 Days</option>
-              </select>
-            </div>
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
 
-            {/* Navigation Tabs */}
-            <div className="bg-[#282828] rounded-xl p-2 shadow-lg mb-6">
-              <div className="flex flex-wrap gap-2">
-                {['overview', 'history', 'predictions'].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-6 py-3 rounded-lg font-medium transition-all duration-300 ${
-                      activeTab === tab
-                        ? 'bg-[#1DB954] text-white'
-                        : 'text-gray-400 hover:text-white hover:bg-[#2a2a2a]'
-                    }`}
-                  >
-                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="space-y-6">
-              {activeTab === 'overview' && renderOverviewSection()}
-              {activeTab === 'history' && renderHistorySection()}
-              {activeTab === 'predictions' && renderPredictionsSection()}
-            </div>
-          </>
-        )}
+        {/* Content */}
+        <div className="space-y-6">
+          {activeTab === 'overview' && renderOverviewSection()}
+          {activeTab === 'history' && renderHistorySection()}
+          {activeTab === 'predictions' && renderPredictionsSection()}
+        </div>
       </div>
     </div>
   );
