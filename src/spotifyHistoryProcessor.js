@@ -249,11 +249,22 @@ const calculateTrends = (history) => {
   }).reverse();
 
   const monthlyTrends = last12Months.map(month => {
-    const monthlyStreams = history.filter(stream => stream.ts.startsWith(month));
+    const monthlyStreams = history.filter(stream => {
+      try {
+        // Safely handle date comparison
+        const streamDate = new Date(stream.ts);
+        const streamMonth = streamDate.toISOString().slice(0, 7);
+        return streamMonth === month;
+      } catch (error) {
+        console.error('Error processing stream date:', error);
+        return false;
+      }
+    });
+
     return {
       month,
       streams: monthlyStreams.length,
-      minutes: Math.floor(monthlyStreams.reduce((acc, stream) => acc + stream.ms_played, 0) / 60000),
+      minutes: Math.floor(monthlyStreams.reduce((acc, stream) => acc + (stream.ms_played || 0), 0) / 60000),
       uniqueArtists: new Set(monthlyStreams.map(s => s.master_metadata_album_artist_name)).size,
       uniqueTracks: new Set(monthlyStreams.map(s => s.master_metadata_track_name)).size
     };

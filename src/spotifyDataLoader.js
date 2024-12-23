@@ -17,13 +17,15 @@ export const loadSpotifyData = () => {
   ];
 
   // Format the data to match our processor's expectations
-  const formattedData = allData.map(item => ({
-    ts: item.endTime,
-    ms_played: item.msPlayed,
-    master_metadata_track_name: item.trackName,
-    master_metadata_album_artist_name: item.artistName,
-    master_metadata_album_name: item.albumName
-  }));
+  const formattedData = allData
+    .filter(item => item.endTime && item.trackName) // Filter out any invalid entries
+    .map(item => ({
+      ts: item.endTime,
+      ms_played: item.msPlayed || 0,
+      master_metadata_track_name: item.trackName || 'Unknown Track',
+      master_metadata_album_artist_name: item.artistName || 'Unknown Artist',
+      master_metadata_album_name: item.albumName || 'Unknown Album'
+    }));
 
   return formattedData;
 };

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { loadSpotifyData } from './spotifyDataLoader';
-import { processStreamingHistory, predictWrapped } from './spotifyHistoryProcessor';
+import { processListeningStats, generatePredictions } from './spotifyDataProcessing';
 
 // Reusable components
 const ProgressBar = ({ current, max, color = "#1DB954", showPercentage = false }) => (
@@ -60,19 +60,30 @@ const MainPage = () => {
   const [showFullList, setShowFullList] = useState(false);
   const [selectedMetric, setSelectedMetric] = useState('streams');
   const [error, setError] = useState(null);
+  const [spotifyData, setSpotifyData] = useState(null);
 
   // Load data on component mount
   useEffect(() => {
-    const loadData = () => {
+    const loadData = async () => {
       try {
         setLoading(true);
-        // Load and process data
-        const rawData = loadSpotifyData();
-        const processed = processStreamingHistory(rawData);
-        setHistoricalData(processed);
+        // Load raw Spotify data
+        const rawData = await loadSpotifyData();
+        setSpotifyData(rawData);
         
-        const predictions = predictWrapped(rawData);
-        setWrappedPredictions(predictions);
+        // Process current listening stats
+        const processedStats = processListeningStats(
+          rawData.tracks,
+          rawData.artists,
+          rawData.recentlyPlayed
+        );
+        setHistoricalData(processedStats);
+        
+        // Generate predictions
+        if (processedStats) {
+          const predictionData = generatePredictions(processedStats, selectedTimeRange);
+          setWrappedPredictions(predictionData);
+        }
       } catch (err) {
         console.error('Error loading data:', err);
         setError(err.message);
@@ -82,94 +93,32 @@ const MainPage = () => {
     };
 
     loadData();
-  }, []);
-
-  const getTimeRangeData = () => {
-    if (!historicalData) return null;
-
-    const now = new Date();
-    const history = historicalData.rawHistory;
-
-    switch (selectedTimeRange) {
-      case '30days':
-        const thirtyDaysAgo = new Date(now.setDate(now.getDate() - 30));
-        return history.filter(item => new Date(item.ts) >= thirtyDaysAgo);
-      case '90days':
-        const ninetyDaysAgo = new Date(now.setDate(now.getDate() - 90));
-        return history.filter(item => new Date(item.ts) >= ninetyDaysAgo);
-      case 'year':
-        const yearStart = new Date(now.getFullYear(), 0, 1);
-        return history.filter(item => new Date(item.ts) >= yearStart);
-      default:
-        return history;
-    }
-  };
+  }, [selectedTimeRange]);
 
   const renderOverviewSection = () => {
     if (!historicalData) return null;
-
-    const stats = historicalData.stats;
-    const trends = historicalData.trends;
 
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <StatCard 
             icon={Clock}
-            value={`${Math.round(stats.totalMinutes / 60)}h`}
+            value={`${Math.round(historicalData.totalMinutes / 60)}h`}
             label="Total Listening Time"
-            trend={trends.growth.minutes}
+            trend={historicalData.trends?.growth?.minutes}
           />
           <StatCard 
             icon={Music}
-            value={stats.uniqueTracks.toLocaleString()}
+            value={historicalData.uniqueTracks?.toLocaleString()}
             label="Unique Tracks"
-            trend={trends.growth.uniqueTracks}
+            trend={historicalData.trends?.growth?.uniqueTracks}
           />
           <StatCard 
             icon={Disc}
-            value={stats.uniqueArtists.toLocaleString()}
+            value={historicalData.uniqueArtists?.toLocaleString()}
             label="Different Artists"
-            trend={trends.growth.uniqueArtists}
+            trend={historicalData.trends?.growth?.uniqueArtists}
           />
-        </div>
-
-        <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
-          <h3 className="text-xl font-bold text-white mb-4">Listening Patterns</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h4 className="text-lg text-white mb-3">Time of Day</h4>
-              <div className="space-y-3">
-                {Object.entries(stats.timeOfDayDistribution).map(([time, count]) => (
-                  <div key={time} className="bg-[#2a2a2a] p-3 rounded-lg">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-white capitalize">{time}</span>
-                      <span className="text-[#1DB954]">
-                        {Math.round((count / stats.totalStreams) * 100)}%
-                      </span>
-                    </div>
-                    <ProgressBar current={count} max={stats.totalStreams} />
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h4 className="text-lg text-white mb-3">Days of Week</h4>
-              <div className="space-y-3">
-                {Object.entries(stats.weekdayDistribution).map(([day, count]) => (
-                  <div key={day} className="bg-[#2a2a2a] p-3 rounded-lg">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-white">{day}</span>
-                      <span className="text-[#1DB954]">
-                        {Math.round((count / stats.totalStreams) * 100)}%
-                      </span>
-                    </div>
-                    <ProgressBar current={count} max={stats.totalStreams} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
         </div>
 
         {renderMonthlyTrends()}
@@ -183,12 +132,12 @@ const MainPage = () => {
     const monthlyData = Object.entries(historicalData.monthlyStats)
       .map(([month, stats]) => ({
         month,
-        streams: stats.streams,
-        minutes: stats.minutes,
-        uniqueTracks: stats.uniqueTracks,
-        uniqueArtists: stats.uniqueArtists
+        streams: stats.streams || 0,
+        minutes: stats.minutes || 0,
+        uniqueTracks: stats.uniqueTracks || 0,
+        uniqueArtists: stats.uniqueArtists || 0
       }))
-      .slice(-12); // Get only last 12 months
+      .slice(-12);
 
     const metrics = {
       streams: { label: 'Streams', color: '#1DB954' },
@@ -217,9 +166,9 @@ const MainPage = () => {
           ))}
         </div>
 
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={monthlyData}>
+        <div style={{ width: '100%', height: '300px' }}>
+          <ResponsiveContainer>
+            <LineChart data={monthlyData} margin={{ top: 5, right: 20, bottom: 5, left: 20 }}>
               <XAxis 
                 dataKey="month" 
                 stroke="#fff"
@@ -228,6 +177,7 @@ const MainPage = () => {
               <YAxis 
                 stroke="#fff"
                 tick={{ fill: '#fff' }}
+                width={80}
               />
               <Tooltip
                 contentStyle={{
@@ -243,6 +193,7 @@ const MainPage = () => {
                 stroke={metrics[selectedMetric].color}
                 strokeWidth={2}
                 dot={{ fill: metrics[selectedMetric].color }}
+                activeDot={{ r: 8 }}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -260,8 +211,8 @@ const MainPage = () => {
         <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
           <h3 className="text-xl font-bold text-white mb-4">Top Artists</h3>
           <div className="space-y-4">
-            {historicalData.stats.topArtists
-              .slice(0, showFullList ? undefined : 10)
+            {historicalData.topArtists
+              ?.slice(0, showFullList ? undefined : 10)
               .map((artist, index) => (
                 <div key={artist.name} className="bg-[#2a2a2a] p-4 rounded-lg">
                   <div className="flex justify-between items-center">
@@ -275,18 +226,10 @@ const MainPage = () => {
                   </div>
                   <ProgressBar 
                     current={artist.playCount} 
-                    max={historicalData.stats.topArtists[0].playCount} 
+                    max={historicalData.topArtists[0].playCount} 
                   />
                 </div>
               ))}
-            {historicalData.stats.topArtists.length > 10 && (
-              <button
-                onClick={() => setShowFullList(!showFullList)}
-                className="mt-4 text-[#1DB954] hover:text-[#1ed760] transition-all"
-              >
-                Show {showFullList ? 'less' : 'more'}
-              </button>
-            )}
           </div>
         </div>
 
@@ -294,14 +237,15 @@ const MainPage = () => {
         <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
           <h3 className="text-xl font-bold text-white mb-4">Top Tracks</h3>
           <div className="space-y-4">
-            {historicalData.stats.topTracks
-              .slice(0, showFullList ? undefined : 10)
+            {historicalData.topTracks
+              ?.slice(0, showFullList ? undefined : 10)
               .map((track, index) => (
                 <div key={track.name} className="bg-[#2a2a2a] p-4 rounded-lg">
                   <div className="flex justify-between items-center">
                     <div>
                       <span className="text-gray-400 mr-2">#{index + 1}</span>
                       <span className="font-medium text-white">{track.name}</span>
+                      <div className="text-sm text-gray-400">by {track.artist}</div>
                     </div>
                     <div className="text-[#1DB954]">
                       {track.playCount.toLocaleString()} plays
@@ -309,52 +253,10 @@ const MainPage = () => {
                   </div>
                   <ProgressBar 
                     current={track.playCount} 
-                    max={historicalData.stats.topTracks[0].playCount} 
+                    max={historicalData.topTracks[0].playCount} 
                   />
                 </div>
               ))}
-            {historicalData.stats.topTracks.length > 10 && (
-              <button
-                onClick={() => setShowFullList(!showFullList)}
-                className="mt-4 text-[#1DB954] hover:text-[#1ed760] transition-all"
-              >
-                Show {showFullList ? 'less' : 'more'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Top Albums */}
-        <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
-          <h3 className="text-xl font-bold text-white mb-4">Top Albums</h3>
-          <div className="space-y-4">
-            {historicalData.stats.topAlbums
-              .slice(0, showFullList ? undefined : 10)
-              .map((album, index) => (
-                <div key={album.name} className="bg-[#2a2a2a] p-4 rounded-lg">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span className="text-gray-400 mr-2">#{index + 1}</span>
-                      <span className="font-medium text-white">{album.name}</span>
-                    </div>
-                    <div className="text-[#1DB954]">
-                      {album.playCount.toLocaleString()} plays
-                    </div>
-                  </div>
-                  <ProgressBar 
-                    current={album.playCount} 
-                    max={historicalData.stats.topAlbums[0].playCount} 
-                  />
-                </div>
-              ))}
-            {historicalData.stats.topAlbums.length > 10 && (
-              <button
-                onClick={() => setShowFullList(!showFullList)}
-                className="mt-4 text-[#1DB954] hover:text-[#1ed760] transition-all"
-              >
-                Show {showFullList ? 'less' : 'more'}
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -366,7 +268,7 @@ const MainPage = () => {
 
     return (
       <div className="bg-[#282828] p-6 rounded-xl shadow-lg">
-        <h3 className="text-xl font-bold text-white mb-4">Your 2024 Wrapped Predictions</h3>
+        <h3 className="text-xl font-bold text-white mb-4">Your 2025 Wrapped Predictions</h3>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div>
@@ -376,26 +278,26 @@ const MainPage = () => {
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-white">Minutes Listened</span>
                   <span className="text-[#1DB954]">
-                    {wrappedPredictions.currentStats.totalMinutes.toLocaleString()}
+                    {historicalData?.totalMinutes?.toLocaleString() || 0}
                   </span>
                 </div>
                 <ProgressBar 
-                  current={wrappedPredictions.currentStats.totalMinutes} 
-                  max={wrappedPredictions.projectedMinutes}
+                  current={historicalData?.totalMinutes || 0} 
+                  max={wrappedPredictions.estimatedMinutes}
                   showPercentage
                 />
               </div>
               
               <div className="bg-[#2a2a2a] p-4 rounded-lg">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-white">Total Streams</span>
+                  <span className="text-white">Unique Artists</span>
                   <span className="text-[#1DB954]">
-                    {wrappedPredictions.currentStats.totalStreams.toLocaleString()}
+                    {historicalData?.uniqueArtists?.toLocaleString() || 0}
                   </span>
                 </div>
                 <ProgressBar 
-                  current={wrappedPredictions.currentStats.totalStreams} 
-                  max={wrappedPredictions.projectedStreams}
+                  current={historicalData?.uniqueArtists || 0} 
+                  max={wrappedPredictions.estimatedArtists}
                   showPercentage
                 />
               </div>
@@ -408,14 +310,14 @@ const MainPage = () => {
               <div className="bg-[#2a2a2a] p-4 rounded-lg">
                 <div className="text-white mb-2">Estimated Final Minutes</div>
                 <div className="text-3xl font-bold text-[#1DB954]">
-                  {wrappedPredictions.projectedMinutes.toLocaleString()}
+                  {wrappedPredictions.estimatedMinutes.toLocaleString()}
                 </div>
               </div>
               
               <div className="bg-[#2a2a2a] p-4 rounded-lg">
-                <div className="text-white mb-2">Estimated Final Streams</div>
+                <div className="text-white mb-2">Estimated Artists</div>
                 <div className="text-3xl font-bold text-[#1DB954]">
-                  {wrappedPredictions.projectedStreams.toLocaleString()}
+                  {wrappedPredictions.estimatedArtists.toLocaleString()}
                 </div>
               </div>
             </div>
@@ -463,9 +365,9 @@ const MainPage = () => {
       <div className="w-full max-w-6xl mx-auto">
         {/* Header */}
         <div className="bg-gradient-to-r from-[#1DB954] to-[#179443] rounded-xl shadow-lg mb-6 p-8">
-          <h1 className="text-3xl font-bold mb-2">Your Spotify Stats & Predictions</h1>
+        <h1 className="text-3xl font-bold mb-2">Your Spotify Stats & Predictions</h1>
           <p className="text-lg opacity-90">
-            Based on your complete streaming history
+            Tracking your journey to Wrapped 2025
           </p>
         </div>
 
